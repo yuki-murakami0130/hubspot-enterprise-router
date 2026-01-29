@@ -6,12 +6,14 @@ const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
 function isEnterpriseFromContactType(contactType) {
   if (!contactType) return false;
 
-  // "enterprise;mid market" みたいな形式を吸収
-  const values = Array.isArray(contactType)
-    ? contactType
-    : String(contactType).split(";").map((s) => s.trim());
+  const raw = Array.isArray(contactType) ? contactType.join(";") : String(contactType);
+  const values = raw.split(";").map((s) => s.trim()).filter(Boolean);
 
-  return values.includes("enterprise") || values.includes("general business");
+  // 英語・日本語どちらでもOKにする（安全側）
+  const enterpriseSet = new Set(["enterprise", "エンタープライズ"]);
+  const generalBusinessSet = new Set(["general business", "general_business", "一般企業", "general business"]); // 念のため
+
+  return values.some(v => enterpriseSet.has(v) || generalBusinessSet.has(v));
 }
 
 exports.handler = async (event) => {
