@@ -1,17 +1,15 @@
 // netlify/functions/enterprise-check.js
-// HubSpotのhubspotutkからContactを検索し、contact_typeでEnterprise判定する
+// hubspotutk から Contact を取得し、contact_type で Enterprise 判定する（byUtk/batch 版）
 
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
-
-// HubSpot上で hubspotutk を保持しているプロパティ（ほぼこれでOK）
-const UTK_PROPERTY = "hs_analytics_cookie";
 
 function isEnterpriseFromContactType(contactType) {
   if (!contactType) return false;
 
+  // "enterprise;mid market" みたいな形式を吸収
   const values = Array.isArray(contactType)
     ? contactType
-    : String(contactType).split(";").map(s => s.trim());
+    : String(contactType).split(";").map((s) => s.trim());
 
   return values.includes("enterprise") || values.includes("general business");
 }
@@ -45,26 +43,18 @@ exports.handler = async (event) => {
       };
     }
 
-    const url = "https://api.hubapi.com/crm/v3/objects/contacts/search";
-    const payload = {
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: UTK_PROPERTY, operator: "EQ", value: utk }
-          ],
-        },
-      ],
-      properties: ["contact_type", UTK_PROPERTY],
-      limit: 1,
-    };
+    // ★ hubspotutk から直接Contactを取る（batch endpoint）
+    // docs: /contacts/v1/contact/byUtk/batch/ :contentReference[oaicite:2]{index=2}
+    const url = new URL("https://api.hubapi.com/contacts/v1/contact/byUtk/batch/");
+    url.searchParams.set("utk", utk);
+    // 必要なプロパティだけ返してもらう（軽量化）
+    url.searchParams.append("property", "contact_type");
 
-    const resp = await fetch(url, {
-      method: "POST",
+    const resp = await fetch(url.toString(), {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${HUBSPOT_TOKEN}`,
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
     });
 
     const data = await resp.json();
@@ -77,8 +67,9 @@ exports.handler = async (event) => {
       };
     }
 
-    const result = data?.results?.[0];
-    if (!result) {
+    // レスポンスは { "<utk>": { properties: {...} } } 形式
+    const record = data?.[utk];
+    if (!record) {
       return {
         statusCode: 200,
         headers: corsHeaders,
@@ -86,17 +77,13 @@ exports.handler = async (event) => {
       };
     }
 
-    const contactType = result.properties?.contact_type;
+    const contactType = record?.properties?.contact_type?.value || "";
     const isEnterprise = isEnterpriseFromContactType(contactType);
 
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify({
-        found: true,
-        isEnterprise,
-        contactType,
-      }),
+      body: JSON.stringify({ found: true, isEnterprise, contactType }),
     };
   } catch (e) {
     return {
