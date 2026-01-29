@@ -1,9 +1,12 @@
 name: Warm Netlify Function
 
 on:
+  workflow_dispatch: {}
   schedule:
-    - cron: "*/5 * * * *"   # 5分ごと
-  workflow_dispatch:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: read
 
 jobs:
   warm:
