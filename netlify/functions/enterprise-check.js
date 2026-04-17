@@ -1,19 +1,15 @@
 // netlify/functions/enterprise-check.js
-// hubspotutk から Contact を取得し、contact_type で Enterprise 判定する（byUtk/batch 版）
+// hubspotutk から Contact を取得し、contact_origin が「サイト最適化WP」なら true を返す
 
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
 
-function isEnterpriseFromContactType(contactType) {
-  if (!contactType) return false;
+function isEnterpriseFromContactOrigin(contactOrigin) {
+  if (!contactOrigin) return false;
 
-  const raw = Array.isArray(contactType) ? contactType.join(";") : String(contactType);
+  const raw = Array.isArray(contactOrigin) ? contactOrigin.join(";") : String(contactOrigin);
   const values = raw.split(";").map((s) => s.trim()).filter(Boolean);
 
-  // 英語・日本語どちらでもOKにする（安全側）
-  const enterpriseSet = new Set(["enterprise", "エンタープライズ"]);
-  const generalBusinessSet = new Set(["general business", "general_business", "一般企業", "general business"]); // 念のため
-
-  return values.some(v => enterpriseSet.has(v) || generalBusinessSet.has(v));
+  return values.includes("サイト最適化WP");
 }
 
 exports.handler = async (event) => {
@@ -45,12 +41,11 @@ exports.handler = async (event) => {
       };
     }
 
-    // ★ hubspotutk から直接Contactを取る（batch endpoint）
-    // docs: /contacts/v1/contact/byUtk/batch/ :contentReference[oaicite:2]{index=2}
     const url = new URL("https://api.hubapi.com/contacts/v1/contact/byUtk/batch/");
     url.searchParams.set("utk", utk);
-    // 必要なプロパティだけ返してもらう（軽量化）
-    url.searchParams.append("property", "contact_type");
+
+    // 取得したいプロパティを contact_type → contact_origin に変更
+    url.searchParams.append("property", "contact_origin");
 
     const resp = await fetch(url.toString(), {
       method: "GET",
@@ -69,7 +64,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // レスポンスは { "<utk>": { properties: {...} } } 形式
     const record = data?.[utk];
     if (!record) {
       return {
@@ -79,13 +73,17 @@ exports.handler = async (event) => {
       };
     }
 
-    const contactType = record?.properties?.contact_type?.value || "";
-    const isEnterprise = isEnterpriseFromContactType(contactType);
+    const contactOrigin = record?.properties?.contact_origin?.value || "";
+    const isEnterprise = isEnterpriseFromContactOrigin(contactOrigin);
 
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify({ found: true, isEnterprise, contactType }),
+      body: JSON.stringify({
+        found: true,
+        isEnterprise,
+        contactOrigin,
+      }),
     };
   } catch (e) {
     return {
