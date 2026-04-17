@@ -46,6 +46,7 @@ exports.handler = async (event) => {
 
     // 取得したいプロパティを contact_type → contact_origin に変更
     url.searchParams.append("property", "contact_origin");
+    url.searchParams.append("property", "email");
 
     const resp = await fetch(url.toString(), {
       method: "GET",
@@ -74,8 +75,9 @@ exports.handler = async (event) => {
     }
 
     const contactOrigin = record?.properties?.contact_origin?.value || "";
+    const email = record?.properties?.email?.value || "";
     const isEnterprise = isEnterpriseFromContactOrigin(contactOrigin);
-
+    
     return {
       statusCode: 200,
       headers: corsHeaders,
@@ -83,6 +85,7 @@ exports.handler = async (event) => {
         found: true,
         isEnterprise,
         contactOrigin,
+        email,
       }),
     };
   } catch (e) {
